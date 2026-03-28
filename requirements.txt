@@ -1,0 +1,10 @@
+# AUTONOMY-ENGINE v1.0 - Self-Healing Agent Swarm System
+# No external dependencies required - uses Python standard library only
+
+# Optional dependencies for enhanced functionality:
+# numpy>=1.20.0  # Used if available, but not required
+
+# Development dependencies
+# pytest>=7.0.0
+# black>=22.0.0
+# mypy>=0.950

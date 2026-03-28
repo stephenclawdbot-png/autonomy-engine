@@ -1,0 +1,102 @@
+"""
+AUTONOMY-ENGINE v1.0 - Self-Healing Agent Swarm System
+
+A revolutionary meta-system that enables agent swarms to self-diagnose,
+self-repair, and auto-recover from failures without human intervention.
+
+Components:
+- health_monitor: Heartbeat tracking and SLA monitoring
+- failure_predictor: ML-based anomaly detection
+- circuit_breaker: Cascading failure prevention
+- recovery_orchestrator: State checkpointing and automatic recovery
+- autonomy_broker: Drop-in replacement for subagent spawning
+"""
+
+__version__ = "1.0.0"
+__author__ = "AUTONOMY-ENGINE Team"
+
+from .health_monitor import (
+    HealthMonitor,
+    HealthStatus,
+    AgentHealthRecord,
+    LatencyHistogram,
+    get_health_monitor
+)
+
+from .failure_predictor import (
+    FailurePredictor,
+    FailureType,
+    PredictionResult,
+    OutputFeatures,
+    get_failure_predictor
+)
+
+from .circuit_breaker import (
+    CircuitBreaker,
+    CircuitBreakerConfig,
+    CircuitBreakerStats,
+    CircuitBreakerRegistry,
+    CircuitState,
+    CircuitOpenError,
+    circuit_breaker,
+    get_circuit_registry
+)
+
+from .recovery_orchestrator import (
+    RecoveryOrchestrator,
+    RecoveryStrategy,
+    RecoveryResult,
+    RecoveryContext,
+    Checkpoint,
+    StateStore,
+    get_recovery_orchestrator
+)
+
+from .autonomy_broker import (
+    AutonomyBroker,
+    SpawnConfig,
+    SpawnResult,
+    AgentHandle,
+    RetryPolicy,
+    resilient_spawn,
+    get_autonomy_broker
+)
+
+__all__ = [
+    # Core classes
+    "HealthMonitor",
+    "HealthStatus",
+    "FailurePredictor",
+    "FailureType",
+    "CircuitBreaker",
+    "CircuitBreakerConfig",
+    "CircuitState",
+    "CircuitOpenError",
+    "RecoveryOrchestrator",
+    "RecoveryStrategy",
+    "AutonomyBroker",
+    "SpawnConfig",
+    "SpawnResult",
+    "AgentHandle",
+    "RetryPolicy",
+    
+    # Data classes
+    "AgentHealthRecord",
+    "LatencyHistogram",
+    "PredictionResult",
+    "OutputFeatures",
+    "CircuitBreakerStats",
+    "RecoveryResult",
+    "RecoveryContext",
+    "Checkpoint",
+    "StateStore",
+    
+    # Convenience functions
+    "get_health_monitor",
+    "get_failure_predictor",
+    "get_circuit_registry",
+    "get_recovery_orchestrator",
+    "get_autonomy_broker",
+    "resilient_spawn",
+    "circuit_breaker",
+]
