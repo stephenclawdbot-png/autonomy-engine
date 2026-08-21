@@ -259,6 +259,16 @@ python identity_api_server.py create-key && \
 python identity_api_server.py serve --port 8080
 ```
 
+`telegram_bot.py` fronts the whole platform in Telegram: self-serve
+API keys, identity lookups, thesis feeds, on-chain trader profiling,
+and live copy-signal alerts pushed to your chat:
+
+```bash
+export TELEGRAM_BOT_TOKEN=...   # from @BotFather
+export TELEGRAM_ADMIN_CHAT_IDS=<your-chat-id>
+python telegram_bot.py
+```
+
 ---
 
 ## Quick Start
