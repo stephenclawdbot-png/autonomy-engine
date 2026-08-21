@@ -52,9 +52,9 @@ class SignalVerdict(Enum):
 @dataclass
 class SignalConfig:
     """Tunables. Defaults calibrated from the tracked trader's measured
-    profile (see TRADER_ANALYSIS.md): median buy $440 (p25 $100 / p75
-    $1000), median hold ~6 min (p75 ~18 min), win rate ~35%, worst
-    observed round-trip loss ~-40%."""
+    profile (see TRADER_ANALYSIS.md): median buy $500 (p25 $100 / p75
+    $1000), median hold ~7 min (p75 ~17 min), win rate ~39%, and two
+    account-scale blowups caused by averaging down past any cap."""
     poll_seconds: float = 2.0
     max_signal_age_seconds: float = 20.0   # scalper edge decays in seconds
     min_trader_usd: float = 100.0          # below trader's p25 = probe, skip
