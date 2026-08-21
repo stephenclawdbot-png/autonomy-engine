@@ -137,3 +137,40 @@ curl -H "Authorization: Bearer $FOMOSCAN_KEY" \
 
 `fomoscan_client.py` wraps all of this with CU cost tracking and no
 external dependencies.
+
+## Self-hosted clone
+
+[`identity_api_server.py`](identity_api_server.py) reimplements this
+entire API surface locally: the same nine endpoints, JSON shapes, auth
+headers, CU prices, monthly hard cap, and error codes, backed by
+SQLite. `fomoscan_client.py` works against it unchanged.
+
+```bash
+python identity_api_server.py init-db
+python identity_api_server.py create-key --cap 100000    # prints fsk_live_…
+python identity_api_server.py create-admin-key           # prints fsk_admin_…
+python identity_api_server.py serve --port 8080
+```
+
+Populate it with your own data (admin key required):
+
+```bash
+curl -X POST -H "Authorization: Bearer $ADMIN_KEY" \
+  -d '{"handle":"sometrader","solanaAddress":"…","evmAddress":"0x…"}' \
+  http://127.0.0.1:8080/admin/users
+curl -X POST -H "Authorization: Bearer $ADMIN_KEY" \
+  -d '{"authorId":"…","tokenAddress":"…","thesis":"…"}' \
+  http://127.0.0.1:8080/admin/theses
+```
+
+Differences from the hosted service, by necessity:
+- **Ships empty.** FomoScan's 1M+ verified links are their dataset;
+  the clone serves whatever you ingest. How you verify handle↔wallet
+  links is up to you (e.g. signed-message challenges).
+- **No crawler fleet.** `POST …/resolve` answers from local tables
+  (`x-fomoscan-resolve: cached`) and returns `FLEET_UNAVAILABLE` on a
+  miss instead of crawling fomo.family.
+- `/admin/*` ingestion endpoints are a self-host extension.
+- Don't reuse the FomoScan name or branding if you expose your
+  instance publicly — the compatibility is technical, not an
+  affiliation.

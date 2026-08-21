@@ -249,6 +249,16 @@ reference in [FOMOSCAN_API.md](FOMOSCAN_API.md)): resolve a profiled
 wallet to the fomo.family trader behind it and follow their thesis
 posts per token, with compute-unit cost tracking built in.
 
+`identity_api_server.py` is a self-hosted, API-compatible clone of
+that service (same endpoints, shapes, CU billing — SQLite-backed,
+ships empty):
+
+```bash
+python identity_api_server.py init-db && \
+python identity_api_server.py create-key && \
+python identity_api_server.py serve --port 8080
+```
+
 ---
 
 ## Quick Start
