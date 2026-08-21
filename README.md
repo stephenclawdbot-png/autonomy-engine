@@ -244,6 +244,17 @@ print(profile.summarize())
 python copy_signal_engine.py 6SHqkzJfZYiNqmz4xDiwndEAqbubuAVt44LwJ9GF3obS
 ```
 
+Cross-chain insider-movement alpha (`insider_alpha.py`): the identity
+layer links a FOMO trader's Solana and EVM wallets, so you can score
+the *timing fingerprints* of informational edge across both chains —
+buying before posting a bullish thesis (talking their book), selling
+into the volume their own call draws, entering tokens well before the
+crowd, and correlated cross-chain activity. All inputs are public
+(on-chain fills + the trader's own posts); a high score is a lead to
+investigate, never proof of wrongdoing. EVM activity plugs in via an
+`EvmActivitySource` (your Etherscan/Basescan key); the Solana + thesis
+timing analysis runs today. Exposed in the bot as `/insider`.
+
 Stronger transports and validation:
 
 - `wallet_stream.py` — WebSocket push subscription (stdlib RFC 6455

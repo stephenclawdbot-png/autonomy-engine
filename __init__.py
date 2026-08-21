@@ -84,6 +84,15 @@ from .wallet_stream import (
     StreamingWalletWatcher
 )
 
+from .insider_alpha import (
+    InsiderAlphaAnalyzer,
+    InsiderReport,
+    SignalScore,
+    EvmActivitySource,
+    EvmEvent,
+    NullEvmSource
+)
+
 from .autonomy_broker import (
     AutonomyBroker,
     SpawnConfig,
@@ -153,4 +162,10 @@ __all__ = [
     "BacktestPosition",
     "WebSocketClient",
     "StreamingWalletWatcher",
+    "InsiderAlphaAnalyzer",
+    "InsiderReport",
+    "SignalScore",
+    "EvmActivitySource",
+    "EvmEvent",
+    "NullEvmSource",
 ]

@@ -51,6 +51,7 @@ from trader_profiler import TraderProfiler
 from copy_signal_engine import WalletWatcher, Signal, SignalConfig
 from wallet_stream import StreamingWalletWatcher
 from backtester import Backtester
+from insider_alpha import InsiderAlphaAnalyzer
 from identity_api_server import get_db, SCHEMA
 
 logging.basicConfig(level=logging.INFO)
@@ -139,6 +140,7 @@ class PlatformBot:
         return ("<b>Identity + trading platform bot</b>\n\n"
                 "Identity: /key /usage /lookup /wallet /thesis\n"
                 "Trading: /profile /backtest /watch /unwatch /watches\n"
+                "Alpha: /insider\n"
                 "Details: /help")
 
     def cmd_help(self, chat_id: int, _arg: str) -> str:
@@ -153,6 +155,8 @@ class PlatformBot:
                 "(WebSocket stream, paper mode)\n"
                 "/backtest &lt;wallet&gt; — what copying would have "
                 "returned (~1 min)\n"
+                "/insider &lt;handle|wallet&gt; — cross-chain "
+                "insider-timing scan (~1 min)\n"
                 "/unwatch &lt;wallet&gt; · /watches\n"
                 + ("\nAdmin: /ingest &lt;json&gt; · /mintkey &lt;cap&gt;"
                    if chat_id in self.admin_chat_ids else ""))
@@ -244,6 +248,28 @@ class PlatformBot:
                 f"Median buy ${s['median_buy_usd']:,.0f} · "
                 f"median hold {hold_str}\n"
                 f"Venues: {venues}")
+
+    def cmd_insider(self, chat_id: int, arg: str) -> str:
+        if not arg:
+            return ("Usage: /insider &lt;handle-or-wallet&gt;  "
+                    "(cross-chain insider-timing scan, ~1 min)")
+        client = self._client(chat_id)   # optional; enriches with identity
+        analyzer = InsiderAlphaAnalyzer(identity=client, profiler=self.profiler)
+        report = analyzer.analyze(arg)
+        lines = [f"<b>Insider scan: @{report.handle or '?'}</b>",
+                 f"SOL: <code>{report.solana_address or '—'}</code>",
+                 f"EVM: <code>{report.evm_address or '—'}</code>",
+                 f"<b>Score {report.score}/100</b> — {report.verdict}", ""]
+        for s in report.signals:
+            state = f"{s.score:.2f}" if s.weight > 0 else "n/a"
+            lines.append(f"[{state}] {s.name}")
+            if s.evidence:
+                lines.append(f"    <i>{s.evidence[0]}</i>")
+        for n in report.notes:
+            lines.append(f"<i>note: {n}</i>")
+        lines.append("\n<i>Public-data timing analysis; a high score is a "
+                     "lead to investigate, not proof of wrongdoing.</i>")
+        return "\n".join(lines)
 
     def cmd_backtest(self, chat_id: int, arg: str) -> str:
         if not arg:
@@ -379,7 +405,7 @@ class PlatformBot:
         "start": cmd_start, "help": cmd_help, "key": cmd_key,
         "usage": cmd_usage, "lookup": cmd_lookup, "wallet": cmd_wallet,
         "thesis": cmd_thesis, "profile": cmd_profile, "watch": cmd_watch,
-        "backtest": cmd_backtest,
+        "backtest": cmd_backtest, "insider": cmd_insider,
         "unwatch": cmd_unwatch, "watches": cmd_watches,
         "ingest": cmd_ingest, "mintkey": cmd_mintkey,
     }
