@@ -52,6 +52,27 @@ from .recovery_orchestrator import (
     get_recovery_orchestrator
 )
 
+from .trader_profiler import (
+    TraderProfiler,
+    TraderProfile,
+    Trade,
+    TradeSide,
+    RoundTrip,
+    SolanaRpcClient,
+    get_trader_profiler
+)
+
+from .copy_signal_engine import (
+    WalletWatcher,
+    SignalConfig,
+    Signal,
+    SignalAction,
+    SignalVerdict,
+    RiskManager,
+    PaperBook,
+    PaperPosition
+)
+
 from .autonomy_broker import (
     AutonomyBroker,
     SpawnConfig,
@@ -99,4 +120,21 @@ __all__ = [
     "get_autonomy_broker",
     "resilient_spawn",
     "circuit_breaker",
+
+    # Trader analysis system
+    "TraderProfiler",
+    "TraderProfile",
+    "Trade",
+    "TradeSide",
+    "RoundTrip",
+    "SolanaRpcClient",
+    "get_trader_profiler",
+    "WalletWatcher",
+    "SignalConfig",
+    "Signal",
+    "SignalAction",
+    "SignalVerdict",
+    "RiskManager",
+    "PaperBook",
+    "PaperPosition",
 ]

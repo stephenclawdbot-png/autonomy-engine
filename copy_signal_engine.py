@@ -51,27 +51,30 @@ class SignalVerdict(Enum):
 
 @dataclass
 class SignalConfig:
-    """Tunables. Defaults are calibrated from the tracked trader's profile."""
+    """Tunables. Defaults calibrated from the tracked trader's measured
+    profile (see TRADER_ANALYSIS.md): median buy $440 (p25 $100 / p75
+    $1000), median hold ~6 min (p75 ~18 min), win rate ~35%, worst
+    observed round-trip loss ~-40%."""
     poll_seconds: float = 2.0
     max_signal_age_seconds: float = 20.0   # scalper edge decays in seconds
-    min_trader_sol: float = 0.05           # ignore dust probes below this
-    copy_fraction: float = 0.5             # copy at 50% of trader's size...
-    max_position_sol: float = 0.5          # ...capped per position
+    min_trader_usd: float = 100.0          # below trader's p25 = probe, skip
+    copy_fraction: float = 0.10            # copy at 10% of trader's size...
+    max_position_usd: float = 100.0        # ...capped per position
     max_concurrent_positions: int = 3
-    max_total_exposure_sol: float = 1.0
-    daily_loss_limit_sol: float = 0.5      # hard stop for the day
-    loss_streak_halt: int = 4              # consecutive losses -> halt
+    max_total_exposure_usd: float = 250.0
+    daily_loss_limit_usd: float = 100.0    # hard stop for the day
+    loss_streak_halt: int = 5              # at 35% WR, 5 losses = cold streak
     halt_cooldown_seconds: float = 1800.0  # 30 min timeout after halt
-    stop_loss_pct: float = 0.35            # exit if down 35% and no trader sell
-    max_hold_seconds: float = 3600.0       # time-stop: trader median hold is minutes
+    stop_loss_pct: float = 0.40            # exit if down 40% and no trader sell
+    max_hold_seconds: float = 3600.0       # time-stop: p75 hold is ~18 min
 
 
 @dataclass
 class Signal:
     action: SignalAction
     mint: str
-    trader_sol: float
-    copy_sol: float
+    trader_usd: float
+    copy_usd: float
     timestamp: float
     source_signature: str
     verdict: SignalVerdict = SignalVerdict.EMITTED
@@ -81,15 +84,15 @@ class Signal:
 @dataclass
 class PaperPosition:
     mint: str
-    sol_spent: float
+    usd_spent: float
     opened_at: float
     token_amount: float = 0.0
-    sol_returned: float = 0.0
+    usd_returned: float = 0.0
     closed: bool = False
 
     @property
     def pnl(self) -> float:
-        return self.sol_returned - self.sol_spent
+        return self.usd_returned - self.usd_spent
 
 
 class RiskManager:
@@ -130,10 +133,10 @@ class RiskManager:
         self._roll_day()
         if time.time() < self.halted_until:
             return SignalVerdict.RISK_HALTED
-        if self.daily_pnl <= -self.config.daily_loss_limit_sol:
+        if self.daily_pnl <= -self.config.daily_loss_limit_usd:
             return SignalVerdict.DAILY_LOSS_LIMIT
         if (open_positions >= self.config.max_concurrent_positions
-                or open_exposure >= self.config.max_total_exposure_sol):
+                or open_exposure >= self.config.max_total_exposure_usd):
             return SignalVerdict.EXPOSURE_CAPPED
         return None
 
@@ -148,15 +151,15 @@ class PaperBook:
 
     @property
     def open_exposure(self) -> float:
-        return sum(p.sol_spent for p in self.positions.values())
+        return sum(p.usd_spent for p in self.positions.values())
 
     def open(self, signal: Signal) -> None:
         pos = self.positions.get(signal.mint)
         if pos:
-            pos.sol_spent += signal.copy_sol
+            pos.usd_spent += signal.copy_usd
         else:
             self.positions[signal.mint] = PaperPosition(
-                mint=signal.mint, sol_spent=signal.copy_sol,
+                mint=signal.mint, usd_spent=signal.copy_usd,
                 opened_at=signal.timestamp)
 
     def close(self, mint: str, proceeds_ratio: float = 1.0) -> Optional[float]:
@@ -165,7 +168,7 @@ class PaperBook:
         pos = self.positions.pop(mint, None)
         if pos is None:
             return None
-        pos.sol_returned = pos.sol_spent * proceeds_ratio
+        pos.usd_returned = pos.usd_spent * proceeds_ratio
         pos.closed = True
         self.closed.append(pos)
         self.risk.record_close(pos.pnl)
@@ -176,11 +179,11 @@ class PaperBook:
         wins = sum(1 for p in self.closed if p.pnl > 0)
         return {
             "open_positions": len(self.positions),
-            "open_exposure_sol": round(self.open_exposure, 4),
+            "open_exposure_usd": round(self.open_exposure, 2),
             "closed_trades": len(self.closed),
             "wins": wins,
-            "realized_pnl_sol": round(realized, 4),
-            "daily_pnl_sol": round(self.risk.daily_pnl, 4),
+            "realized_pnl_usd": round(realized, 2),
+            "daily_pnl_usd": round(self.risk.daily_pnl, 2),
             "risk_halted": time.time() < self.risk.halted_until,
         }
 
@@ -209,9 +212,9 @@ class WalletWatcher:
         cfg = self.config
         action = (SignalAction.BUY if trade.side == TradeSide.BUY
                   else SignalAction.SELL)
-        copy_sol = min(trade.sol_amount * cfg.copy_fraction, cfg.max_position_sol)
+        copy_usd = min(trade.quote_usd * cfg.copy_fraction, cfg.max_position_usd)
         signal = Signal(action=action, mint=trade.mint,
-                        trader_sol=trade.sol_amount, copy_sol=copy_sol,
+                        trader_usd=trade.quote_usd, copy_usd=copy_usd,
                         timestamp=time.time(),
                         source_signature=trade.signature)
 
@@ -222,9 +225,9 @@ class WalletWatcher:
             return signal
 
         if action == SignalAction.BUY:
-            if trade.sol_amount < cfg.min_trader_sol:
+            if trade.quote_usd < cfg.min_trader_usd:
                 signal.verdict = SignalVerdict.DUST
-                signal.reason = f"trader size {trade.sol_amount:.4f} SOL below floor"
+                signal.reason = f"trader size ${trade.quote_usd:.2f} below floor"
                 return signal
             blocked = self.risk.check_buy(self.book.open_exposure,
                                           len(self.book.positions))
@@ -243,17 +246,17 @@ class WalletWatcher:
     def _apply(self, signal: Signal) -> None:
         self.signal_log.append(signal)
         if signal.verdict != SignalVerdict.EMITTED:
-            logger.info("Signal dropped (%s): %s %s %.4f SOL %s",
+            logger.info("Signal dropped (%s): %s %s $%.2f %s",
                         signal.verdict.value, signal.action.value,
-                        signal.mint[:8], signal.trader_sol, signal.reason)
+                        signal.mint[:8], signal.trader_usd, signal.reason)
             return
         if signal.action == SignalAction.BUY:
             self.book.open(signal)
         else:
             self.book.close(signal.mint)
-        logger.info("SIGNAL %s %s copy=%.4f SOL (trader %.4f) | book: %s",
+        logger.info("SIGNAL %s %s copy=$%.2f (trader $%.2f) | book: %s",
                     signal.action.value.upper(), signal.mint[:8],
-                    signal.copy_sol, signal.trader_sol, self.book.summary())
+                    signal.copy_usd, signal.trader_usd, self.book.summary())
         if self.on_signal:
             self.on_signal(signal)
 

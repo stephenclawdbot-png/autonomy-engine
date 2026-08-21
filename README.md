@@ -221,6 +221,29 @@ result = await broker.spawn(agent_func, config, *args)
 # Returns: SpawnResult with success, retry_count, health_status, etc.
 ```
 
+### 6. Trader Analysis System (`trader_profiler.py`, `copy_signal_engine.py`)
+
+On-chain behavioral analysis of a Solana trader wallet plus a real-time
+copy-signal engine with a risk pipeline. Full study and strategy rules in
+[TRADER_ANALYSIS.md](TRADER_ANALYSIS.md).
+
+```python
+from trader_profiler import get_trader_profiler
+
+# Profile any wallet's trading behavior from public RPC
+profile = get_trader_profiler().profile(
+    "6SHqkzJfZYiNqmz4xDiwndEAqbubuAVt44LwJ9GF3obS",
+    max_transactions=200,
+)
+print(profile.summarize())
+# {win_rate: 0.35, median_buy_usd: 440, median_hold_seconds: 354, ...}
+```
+
+```bash
+# Watch the wallet live and emit copy signals (paper mode)
+python copy_signal_engine.py 6SHqkzJfZYiNqmz4xDiwndEAqbubuAVt44LwJ9GF3obS
+```
+
 ---
 
 ## Quick Start

@@ -27,7 +27,15 @@ logger = logging.getLogger("TraderProfiler")
 
 DEFAULT_RPC = "https://api.mainnet-beta.solana.com"
 WSOL_MINT = "So11111111111111111111111111111111111111112"
+USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+USDT_MINT = "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB"
 LAMPORTS = 1_000_000_000
+
+# Mints treated as the "cash" side of a swap rather than a position.
+# Many Solana memecoin traders quote in USDC (via aggregators like DFlow),
+# not SOL - PnL is invisible unless stables count as quote currency.
+QUOTE_MINTS = {WSOL_MINT: "SOL", USDC_MINT: "USDC", USDT_MINT: "USDT"}
+DEFAULT_SOL_PRICE_USD = 185.0  # estimate used to merge SOL+stable flows
 
 # DEX / launchpad programs we recognize when attributing venues
 KNOWN_PROGRAMS = {
@@ -38,6 +46,9 @@ KNOWN_PROGRAMS = {
     "CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK": "Raydium CLMM",
     "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo": "Meteora DLMM",
     "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4": "Jupiter v6",
+    "DF1ow4tspfHX9JwWJsAb9epbkA8hmpSEAtxXy1V27QBH": "DFlow aggregator",
+    "99vQwtBwYtrqqD9YSXbdum3KBdxPAVxYTaQ3cfnJSrN2": "DFlow swap router",
+    "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc": "Orca Whirlpool",
 }
 
 
@@ -54,7 +65,7 @@ class Trade:
     mint: str
     side: TradeSide
     token_amount: float
-    sol_amount: float          # SOL spent (buy) or received (sell), incl. wSOL
+    quote_usd: float           # USD value of the quote leg (SOL + stables)
     fee: float
     programs: List[str] = field(default_factory=list)
 
@@ -65,19 +76,27 @@ class RoundTrip:
     mint: str
     buys: int = 0
     sells: int = 0
-    sol_in: float = 0.0
-    sol_out: float = 0.0
+    usd_in: float = 0.0
+    usd_out: float = 0.0
+    tokens_bought: float = 0.0
+    tokens_sold: float = 0.0
     first_ts: int = 0
     last_ts: int = 0
     hold_seconds: Optional[int] = None   # first buy -> first subsequent sell
 
     @property
     def realized_pnl(self) -> float:
-        return self.sol_out - self.sol_in
+        return self.usd_out - self.usd_in
 
     @property
     def closed(self) -> bool:
         return self.buys > 0 and self.sells > 0
+
+    @property
+    def complete(self) -> bool:
+        """Both legs observed AND position not opened before the window
+        (sells don't exceed observed buys)."""
+        return self.closed and self.tokens_sold <= self.tokens_bought * 1.05
 
 
 @dataclass
@@ -94,24 +113,25 @@ class TraderProfile:
     # Derived headline stats (filled by summarize())
     unique_tokens: int = 0
     win_rate: float = 0.0
-    total_sol_in: float = 0.0
-    net_pnl_sol: float = 0.0
-    median_buy_sol: float = 0.0
+    total_usd_in: float = 0.0
+    net_pnl_usd: float = 0.0
+    median_buy_usd: float = 0.0
     median_hold_seconds: Optional[float] = None
     trades_per_hour: float = 0.0
 
     def summarize(self) -> Dict:
-        closed = [r for r in self.round_trips if r.closed and r.sol_in > 0.001]
-        wins = [r for r in closed if r.realized_pnl > 0]
-        buy_sizes = sorted(t.sol_amount for t in self.trades
-                           if t.side == TradeSide.BUY and t.sol_amount > 0)
-        holds = sorted(r.hold_seconds for r in closed if r.hold_seconds is not None)
+        complete = [r for r in self.round_trips if r.complete and r.usd_in > 5]
+        wins = [r for r in complete if r.realized_pnl > 0]
+        buy_sizes = sorted(t.quote_usd for t in self.trades
+                           if t.side == TradeSide.BUY and t.quote_usd > 0.5)
+        holds = sorted(r.hold_seconds for r in complete
+                       if r.hold_seconds is not None)
 
         self.unique_tokens = len(self.round_trips)
-        self.win_rate = len(wins) / len(closed) if closed else 0.0
-        self.total_sol_in = sum(r.sol_in for r in closed)
-        self.net_pnl_sol = sum(r.realized_pnl for r in closed)
-        self.median_buy_sol = buy_sizes[len(buy_sizes) // 2] if buy_sizes else 0.0
+        self.win_rate = len(wins) / len(complete) if complete else 0.0
+        self.total_usd_in = sum(r.usd_in for r in complete)
+        self.net_pnl_usd = sum(r.realized_pnl for r in complete)
+        self.median_buy_usd = buy_sizes[len(buy_sizes) // 2] if buy_sizes else 0.0
         self.median_hold_seconds = holds[len(holds) // 2] if holds else None
         self.trades_per_hour = (len(self.trades) / self.span_hours
                                 if self.span_hours > 0 else 0.0)
@@ -120,11 +140,11 @@ class TraderProfile:
             "tx_count": self.tx_count,
             "span_hours": round(self.span_hours, 1),
             "unique_tokens": self.unique_tokens,
-            "closed_round_trips": len(closed),
+            "complete_round_trips": len(complete),
             "win_rate": round(self.win_rate, 3),
-            "total_sol_deployed": round(self.total_sol_in, 3),
-            "net_realized_pnl_sol": round(self.net_pnl_sol, 3),
-            "median_buy_sol": round(self.median_buy_sol, 4),
+            "total_usd_deployed": round(self.total_usd_in, 2),
+            "net_realized_pnl_usd": round(self.net_pnl_usd, 2),
+            "median_buy_usd": round(self.median_buy_usd, 2),
             "median_hold_seconds": self.median_hold_seconds,
             "trades_per_hour": round(self.trades_per_hour, 2),
             "venues": dict(sorted(self.venue_counts.items(),
@@ -188,8 +208,10 @@ class SolanaRpcClient:
 class TraderProfiler:
     """Builds a TraderProfile from raw on-chain history."""
 
-    def __init__(self, rpc: Optional[SolanaRpcClient] = None):
+    def __init__(self, rpc: Optional[SolanaRpcClient] = None,
+                 sol_price_usd: float = DEFAULT_SOL_PRICE_USD):
         self.rpc = rpc or SolanaRpcClient()
+        self.sol_price_usd = sol_price_usd
 
     def profile(self, wallet: str, max_transactions: int = 200,
                 raw_transactions: Optional[List[dict]] = None) -> TraderProfile:
@@ -268,24 +290,30 @@ class TraderProfiler:
 
         pre = owned_balances(meta.get("preTokenBalances"))
         post = owned_balances(meta.get("postTokenBalances"))
-        wsol_delta = post.get(WSOL_MINT, 0) - pre.get(WSOL_MINT, 0)
-        sol_flow = sol_delta + wsol_delta
+
+        def quote_delta(mint):
+            return post.get(mint, 0) - pre.get(mint, 0)
+
+        # Combined USD flow across all quote legs (native SOL, wSOL, stables)
+        usd_flow = (sol_delta + quote_delta(WSOL_MINT)) * self.sol_price_usd
+        usd_flow += quote_delta(USDC_MINT) + quote_delta(USDT_MINT)
 
         trades = []
         for mint in set(pre) | set(post):
-            if mint == WSOL_MINT:
+            if mint in QUOTE_MINTS:
                 continue
             delta = post.get(mint, 0) - pre.get(mint, 0)
             if abs(delta) < 1e-9:
                 continue
             side = TradeSide.BUY if delta > 0 else TradeSide.SELL
-            # SOL spent on a buy shows as negative flow; received on sell positive
-            sol_amount = -sol_flow if side == TradeSide.BUY else sol_flow
+            # Quote spent on a buy shows as negative flow; received on sell
+            # positive. abs() also covers token->token routes where the
+            # quote leg nets near zero.
             trades.append(Trade(
                 signature=tx["transaction"]["signatures"][0],
                 timestamp=ts, mint=mint, side=side,
                 token_amount=abs(delta),
-                sol_amount=max(sol_amount, 0.0),
+                quote_usd=abs(usd_flow),
                 fee=fee, programs=sorted(programs),
             ))
         return trades, programs, ts
@@ -305,10 +333,12 @@ class TraderProfiler:
             for t in mint_trades:
                 if t.side == TradeSide.BUY:
                     rt.buys += 1
-                    rt.sol_in += t.sol_amount
+                    rt.usd_in += t.quote_usd
+                    rt.tokens_bought += t.token_amount
                 else:
                     rt.sells += 1
-                    rt.sol_out += t.sol_amount
+                    rt.usd_out += t.quote_usd
+                    rt.tokens_sold += t.token_amount
             first_buy = next((t.timestamp for t in mint_trades
                               if t.side == TradeSide.BUY), None)
             if first_buy is not None:
