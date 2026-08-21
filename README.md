@@ -244,6 +244,20 @@ print(profile.summarize())
 python copy_signal_engine.py 6SHqkzJfZYiNqmz4xDiwndEAqbubuAVt44LwJ9GF3obS
 ```
 
+Stronger transports and validation:
+
+- `wallet_stream.py` — WebSocket push subscription (stdlib RFC 6455
+  client, proxy-aware) that delivers wallet activity in ~0.3 s instead
+  of 2 s+ polling; `StreamingWalletWatcher` is a drop-in for
+  `WalletWatcher` with automatic polling fallback.
+- `backtester.py` — replays a wallet's recorded fills through the same
+  filters and risk rules under latency/slippage scenarios, so you know
+  what copying would actually have returned before risking anything:
+
+```bash
+python backtester.py wallet_data.json    # scenario sweep
+```
+
 Identity enrichment via the FomoScan API (`fomoscan_client.py`,
 reference in [FOMOSCAN_API.md](FOMOSCAN_API.md)): resolve a profiled
 wallet to the fomo.family trader behind it and follow their thesis

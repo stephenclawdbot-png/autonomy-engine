@@ -73,6 +73,17 @@ from .copy_signal_engine import (
     PaperPosition
 )
 
+from .backtester import (
+    Backtester,
+    BacktestResult,
+    BacktestPosition
+)
+
+from .wallet_stream import (
+    WebSocketClient,
+    StreamingWalletWatcher
+)
+
 from .autonomy_broker import (
     AutonomyBroker,
     SpawnConfig,
@@ -137,4 +148,9 @@ __all__ = [
     "RiskManager",
     "PaperBook",
     "PaperPosition",
+    "Backtester",
+    "BacktestResult",
+    "BacktestPosition",
+    "WebSocketClient",
+    "StreamingWalletWatcher",
 ]

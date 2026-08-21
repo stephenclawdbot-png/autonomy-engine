@@ -49,6 +49,8 @@ import logging
 from fomoscan_client import FomoScanClient, FomoScanError
 from trader_profiler import TraderProfiler
 from copy_signal_engine import WalletWatcher, Signal, SignalConfig
+from wallet_stream import StreamingWalletWatcher
+from backtester import Backtester
 from identity_api_server import get_db, SCHEMA
 
 logging.basicConfig(level=logging.INFO)
@@ -136,7 +138,7 @@ class PlatformBot:
     def cmd_start(self, chat_id: int, _arg: str) -> str:
         return ("<b>Identity + trading platform bot</b>\n\n"
                 "Identity: /key /usage /lookup /wallet /thesis\n"
-                "Trading: /profile /watch /unwatch /watches\n"
+                "Trading: /profile /backtest /watch /unwatch /watches\n"
                 "Details: /help")
 
     def cmd_help(self, chat_id: int, _arg: str) -> str:
@@ -148,7 +150,9 @@ class PlatformBot:
                 "/profile &lt;wallet&gt; — on-chain trading profile "
                 "(free, public RPC, ~1 min)\n"
                 "/watch &lt;wallet&gt; — live copy-signal alerts here "
-                "(paper mode)\n"
+                "(WebSocket stream, paper mode)\n"
+                "/backtest &lt;wallet&gt; — what copying would have "
+                "returned (~1 min)\n"
                 "/unwatch &lt;wallet&gt; · /watches\n"
                 + ("\nAdmin: /ingest &lt;json&gt; · /mintkey &lt;cap&gt;"
                    if chat_id in self.admin_chat_ids else ""))
@@ -241,6 +245,29 @@ class PlatformBot:
                 f"median hold {hold_str}\n"
                 f"Venues: {venues}")
 
+    def cmd_backtest(self, chat_id: int, arg: str) -> str:
+        if not arg:
+            return "Usage: /backtest &lt;solana-wallet&gt;  (takes ~1 min)"
+        profile = self.profiler.profile(arg, max_transactions=100)
+        if not profile.trades:
+            return "No trades found for that wallet."
+        out = [f"<b>Backtest: {arg[:8]}…{arg[-4:]}</b> "
+               f"({len(profile.trades)} trades, {profile.span_hours:.0f}h)\n"
+               "Copying with the default risk config would have returned:"]
+        for res in Backtester().sweep(profile.trades,
+                                      latencies=(5.0,),
+                                      slippages=(0.0, 0.03, 0.08)):
+            s = res.summary()
+            out.append(f"• slippage {100 * res.slippage_pct:.0f}%: "
+                       f"{s['round_trips']} trips, WR {s['win_rate']:.0%}, "
+                       f"${s['usd_deployed']:,.0f} → "
+                       f"<b>${s['net_pnl_usd']:+,.0f}</b> "
+                       f"({100 * s['return_on_turnover']:+.1f}%)")
+        out.append("<i>Entries/exits priced off the trader's own fills, "
+                   "degraded by slippage; never-exited tokens marked at "
+                   "25% recovery.</i>")
+        return "\n".join(out)
+
     def cmd_watch(self, chat_id: int, arg: str) -> str:
         if not arg:
             return "Usage: /watch &lt;solana-wallet&gt;"
@@ -259,15 +286,17 @@ class PlatformBot:
             if self.transport:
                 self.transport.send(_chat, text)
 
-        watcher = WalletWatcher(arg, SignalConfig(), on_signal=on_signal)
+        watcher = StreamingWalletWatcher(arg, SignalConfig(),
+                                         on_signal=on_signal)
         thread = threading.Thread(target=watcher.run, daemon=True,
                                   name=f"watch-{arg[:8]}")
         state.watchers[arg] = watcher
         state.threads[arg] = thread
         thread.start()
-        return (f"Watching <code>{arg}</code> — copy signals will be "
-                "pushed here (paper mode, risk pipeline active: "
-                "staleness/dust filters, exposure caps, loss-streak halt).")
+        return (f"Watching <code>{arg}</code> via WebSocket stream "
+                "(sub-second signals, polling fallback) — copy signals "
+                "will be pushed here. Paper mode; risk pipeline active: "
+                "staleness/dust filters, exposure caps, loss-streak halt.")
 
     def cmd_unwatch(self, chat_id: int, arg: str) -> str:
         state = self._state(chat_id)
@@ -350,6 +379,7 @@ class PlatformBot:
         "start": cmd_start, "help": cmd_help, "key": cmd_key,
         "usage": cmd_usage, "lookup": cmd_lookup, "wallet": cmd_wallet,
         "thesis": cmd_thesis, "profile": cmd_profile, "watch": cmd_watch,
+        "backtest": cmd_backtest,
         "unwatch": cmd_unwatch, "watches": cmd_watches,
         "ingest": cmd_ingest, "mintkey": cmd_mintkey,
     }
