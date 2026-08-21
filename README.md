@@ -244,6 +244,11 @@ print(profile.summarize())
 python copy_signal_engine.py 6SHqkzJfZYiNqmz4xDiwndEAqbubuAVt44LwJ9GF3obS
 ```
 
+Identity enrichment via the FomoScan API (`fomoscan_client.py`,
+reference in [FOMOSCAN_API.md](FOMOSCAN_API.md)): resolve a profiled
+wallet to the fomo.family trader behind it and follow their thesis
+posts per token, with compute-unit cost tracking built in.
+
 ---
 
 ## Quick Start
